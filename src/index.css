@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-weight: 200;
+    background-color: #0a0418;
+    color: #f4ecdf;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  *::selection {
+    background-color: rgba(255, 155, 106, 0.3);
+    color: #f4ecdf;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+
+  .glass {
+    background: rgba(29, 18, 64, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(244, 236, 223, 0.06);
+  }
+
+  .glass-strong {
+    background: rgba(29, 18, 64, 0.7);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(244, 236, 223, 0.08);
+  }
+
+  .gradient-text-amber {
+    background: linear-gradient(135deg, #ff9b6a 0%, #ffd4b0 50%, #a380ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .gradient-text-cosmic {
+    background: linear-gradient(135deg, #f4ecdf 0%, #a89cc4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .clip-diagonal-bottom { clip-path: polygon(0 0, 100% 0, 100% 92%, 0 100%); }
+  .clip-diagonal-top { clip-path: polygon(0 8%, 100% 0, 100% 100%, 0 100%); }
+  .clip-notch-tr { clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%); }
+  .clip-arrow-cta { clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%); }
+  .clip-blob { clip-path: ellipse(60% 70% at 40% 50%); }
+  .clip-blob-right { clip-path: ellipse(60% 70% at 60% 50%); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+  .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
