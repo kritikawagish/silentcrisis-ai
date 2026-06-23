@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion'; // ← was 'motion/react'
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface FlipWordsProps {
@@ -42,3 +42,4 @@ export const FlipWords = ({ words, duration = 2800, className }: FlipWordsProps)
 };
 
 export default FlipWords;
+
