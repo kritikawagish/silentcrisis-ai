@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, ReactNode } from 'react';
-import { useScroll, useTransform, motion } from 'motion/react';
+import { useScroll, useTransform, motion } from 'framer-motion';
 
 interface TimelineEntry {
   title: string;
@@ -59,3 +59,4 @@ export const Timeline = ({ data }: TimelineProps) => {
 };
 
 export default Timeline;
+
