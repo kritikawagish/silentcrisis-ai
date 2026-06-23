@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion } from 'framer-motion'; // ← was 'motion/react'
 import { cn } from '@/lib/utils';
 
 interface FlipWordsProps {
