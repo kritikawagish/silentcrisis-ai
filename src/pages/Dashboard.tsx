@@ -1,13 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  TrendingDown,
-  Moon,
-  Calendar,
-  MessageSquare,
-  Coffee,
-  Sparkles,
-  Bell,
+  TrendingDown, AlertCircle, Heart, Activity, Moon, Calendar,
+  MessageSquare, Coffee, Brain, GitBranch, Sparkles, Bell,
+  ArrowRight, RotateCcw, Database
 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import WellnessSparkline from '@/components/custom/WellnessSparkline';
@@ -17,323 +14,371 @@ import SignalCard from '@/components/custom/SignalCard';
 import InterventionTrigger from '@/components/custom/InterventionTrigger';
 import { AnimatedNumber } from '@/components/ui/animated-number';
 
-// ---------------------------------------------------------------------------
-// Data
-// ---------------------------------------------------------------------------
-
-const signals = [
-  {
-    icon: Moon,
-    title: 'Sleep cadence',
-    description: 'Variability up 18% over baseline.',
-    status: 'watching' as const,
-    data: [62, 65, 60, 58, 55, 52, 48, 45, 42, 40],
-  },
-  {
-    icon: Calendar,
-    title: 'Calendar density',
-    description: 'Meeting load 22% above your norm.',
-    status: 'elevated' as const,
-    data: [40, 45, 50, 55, 60, 68, 75, 78, 82, 85],
-  },
-  {
-    icon: MessageSquare,
-    title: 'Response latency',
-    description: 'Reply window widening gradually.',
-    status: 'watching' as const,
-    data: [30, 35, 40, 45, 50, 55, 62, 68, 70, 74],
-  },
-  {
-    icon: Coffee,
-    title: 'Breaks taken',
-    description: 'Down to 1.2/day from your usual 3.4.',
-    status: 'elevated' as const,
-    data: [50, 48, 45, 42, 38, 35, 32, 30, 28, 25],
-  },
-];
-
-const interventionLog = [
-  { id: 'log-1', time: '12 min ago', type: 'Box breathing',      outcome: 'Engaged · 4 min',              color: '#7fd9b8' },
-  { id: 'log-2', time: '4h ago',     type: 'Calendar protect',   outcome: 'Accepted · 90 min protected',  color: '#7fd9b8' },
-  { id: 'log-3', time: '1d ago',     type: 'Reflection prompt',  outcome: 'Completed',                    color: '#7fd9b8' },
-  { id: 'log-4', time: '3d ago',     type: 'Connection nudge',   outcome: 'Reached out to support',       color: '#7fd9b8' },
-  { id: 'log-5', time: '5d ago',     type: 'Cognitive reframe',  outcome: 'Completed reflection',         color: '#7fd9b8' },
-];
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+import { computeRisk, computeRiskHistory, DEFAULT_BASELINE } from '@/lib/riskEngine';
+import { computeBaseline, getBaselineStatus } from '@/lib/baselineEngine';
+import {
+  getCheckIns, getCheckInHistory, getLatestCheckIn,
+  getRiskHistory, getUserProfile, seedDemoData, clearAllData,
+  type StoredCheckIn
+} from '@/lib/storageEngine';
+import { selectIntervention, INTERVENTION_LIBRARY } from '@/lib/interventionEngine';
 
 export default function Dashboard() {
   const [time, setTime] = useState(new Date());
+  const [checkIns, setCheckIns] = useState<StoredCheckIn[]>([]);
+  const [isDemo, setIsDemo] = useState(false);
 
+  // Load data
   useEffect(() => {
-    const interval = setInterval(() => setTime(new Date()), 60_000);
+    loadData();
+    const interval = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
 
+  const loadData = () => {
+    const existing = getCheckIns();
+    setCheckIns(existing);
+  };
+
+  const handleLoadDemo = () => {
+    seedDemoData();
+    loadData();
+    setIsDemo(true);
+  };
+
+  const handleClearData = () => {
+    clearAllData();
+    setCheckIns([]);
+    setIsDemo(false);
+  };
+
+  // Derived computations
+  const profile = getUserProfile();
+  const history = useMemo(() => getCheckInHistory(), [checkIns]);
+  const baseline = useMemo(() => computeBaseline(history), [history]);
+  const baselineStatus = useMemo(() => getBaselineStatus(baseline.days_tracked), [baseline]);
+  const latestCheckIn = useMemo(() => getLatestCheckIn(), [checkIns]);
+
+  const currentRisk = useMemo(() => {
+    if (!latestCheckIn) return null;
+    return computeRisk({
+      sleep_hours: latestCheckIn.sleep_hours,
+      meetings: latestCheckIn.meetings,
+      response_time_min: latestCheckIn.response_time_min,
+      breaks: latestCheckIn.breaks,
+      mood_score: latestCheckIn.mood_score,
+      task_switches: latestCheckIn.task_switches,
+    }, baseline);
+  }, [latestCheckIn, baseline]);
+
+  const riskHistoryData = useMemo(() => {
+    return computeRiskHistory(history, baseline);
+  }, [history, baseline]);
+
+  const currentIntervention = useMemo(() => {
+    if (!currentRisk) return INTERVENTION_LIBRARY[0];
+    return selectIntervention(currentRisk.tier, currentRisk.signals);
+  }, [currentRisk]);
+
+  // Sparkline data from risk history
+  const sparklineData = useMemo(() => {
+    if (riskHistoryData.length === 0) return [50, 50, 50, 50, 50];
+    // Invert risk to show as "wellness" (100 - risk)
+    return riskHistoryData.map(d => 100 - d.risk);
+  }, [riskHistoryData]);
+
+  // Find intervention point (day with highest risk)
+  const interventionIndex = useMemo(() => {
+    if (riskHistoryData.length === 0) return 0;
+    let maxRisk = 0;
+    let maxIdx = 0;
+    riskHistoryData.forEach((d, i) => {
+      if (d.risk > maxRisk) { maxRisk = d.risk; maxIdx = i; }
+    });
+    return maxIdx;
+  }, [riskHistoryData]);
+
+  // Signal cards from latest check-in
+  const signalCards = useMemo(() => {
+    if (!currentRisk) return [];
+    const iconMap: Record<string, any> = {
+      sleep_hours: Moon,
+      meetings: Calendar,
+      response_time_min: MessageSquare,
+      breaks: Coffee,
+      mood_score: Brain,
+      task_switches: GitBranch,
+    };
+    const labelMap: Record<string, string> = {
+      sleep_hours: 'Sleep cadence',
+      meetings: 'Calendar density',
+      response_time_min: 'Response latency',
+      breaks: 'Breaks taken',
+      mood_score: 'Mood sentiment',
+      task_switches: 'Task switching',
+    };
+    const descMap: Record<string, (s: any) => string> = {
+      sleep_hours: (s) => `${s.value.toFixed(1)}h vs baseline ${s.baseline_mean.toFixed(1)}h (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+      meetings: (s) => `${s.value} meetings vs baseline ${s.baseline_mean.toFixed(1)} (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+      response_time_min: (s) => `${s.value}min avg vs baseline ${s.baseline_mean.toFixed(0)}min (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+      breaks: (s) => `${s.value} breaks vs baseline ${s.baseline_mean.toFixed(1)} (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+      mood_score: (s) => `Score ${s.value.toFixed(0)} vs baseline ${s.baseline_mean.toFixed(0)} (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+      task_switches: (s) => `${s.value} switches vs baseline ${s.baseline_mean.toFixed(0)} (${s.z_score > 0 ? '+' : ''}${s.z_score.toFixed(1)}σ)`,
+    };
+
+    return currentRisk.signals.map(s => {
+      // Build historical data for this signal from check-in history
+      const signalHistory = checkIns.map(c => (c as any)[s.signal] as number).slice(-10);
+
+      return {
+        icon: iconMap[s.signal] || Activity,
+        title: labelMap[s.signal] || s.signal,
+        description: descMap[s.signal]?.(s) || `Z-score: ${s.z_score.toFixed(2)}`,
+        status: s.status as 'normal' | 'watching' | 'elevated',
+        data: signalHistory.length > 0 ? signalHistory : [50, 50, 50, 50, 50],
+      };
+    });
+  }, [currentRisk, checkIns]);
+
+  // Risk history entries for the log
+  const riskLog = useMemo(() => getRiskHistory().slice(-5).reverse(), [checkIns]);
+
+  // ─── EMPTY STATE ───────────────────────────────────────────────
+  if (checkIns.length === 0) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="DASHBOARD"
+          title={<>The dashboard, in motion.</>}
+          subtitle="Your personal wellness constellation — powered by real data, computed by the risk engine."
+        />
+        <section className="relative px-6 pb-32 max-w-4xl mx-auto text-center">
+          <div className="glass rounded-3xl p-12 space-y-6">
+            <Database className="w-12 h-12 text-star-faint mx-auto" />
+            <h2 className="text-2xl font-display text-star-bright">No check-in data yet</h2>
+            <p className="text-star-dim max-w-md mx-auto">
+              The dashboard needs at least one daily check-in to compute your risk constellation.
+              Start a check-in, or load the demo dataset to see the engine in action.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                to="/check-in"
+                className="flex items-center justify-center gap-2 bg-amber-dawn text-cosmos-void font-medium px-6 py-3 rounded-xl hover:bg-amber-warm transition-colors"
+              >
+                Start your first check-in
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <button
+                onClick={handleLoadDemo}
+                className="flex items-center justify-center gap-2 glass text-star-bright px-6 py-3 rounded-xl hover:bg-cosmos-surface transition-colors"
+              >
+                <Sparkles className="w-4 h-4 text-amber-dawn" />
+                Load 17-day demo data
+              </button>
+            </div>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  // ─── FULL DASHBOARD ────────────────────────────────────────────
+  const tierColors = {
+    WATCHING: '#7fd9b8',
+    ELEVATED: '#ff9b6a',
+    CRITICAL: '#ff6b8a',
+  };
+
   return (
-    <motion.main
-      id="dashboard_page"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.6 }}
-      className="bg-cosmos-void min-h-screen"
-    >
-      {/* ── Page header ─────────────────────────────────────────────────── */}
+    <>
       <PageHeader
-        eyebrow="Live demo · Sample user: Maya R."
-        accent="05"
-        title={
-          <>
-            The dashboard,{' '}
-            <span className="italic text-star-dim">in motion.</span>
-          </>
-        }
-        subtitle="This is the actual interface. Live data, real interactions, sample patterns showing how the system catches early decline."
+        eyebrow="DASHBOARD"
+        title={<>The dashboard, in motion.</>}
+        subtitle="Live data. Real computation. Your personal risk constellation."
       />
 
-      {/* ── Main content ────────────────────────────────────────────────── */}
-      <section className="relative w-full bg-cosmos-void pb-32">
-        <div className="relative max-w-[2400px] mx-auto px-4 md:px-8">
+      <section className="relative px-6 pb-32 max-w-7xl mx-auto">
 
-          {/* User identity bar */}
-          <div className="grid grid-cols-12 mb-8">
-            <div className="col-span-12 md:col-start-2 md:col-span-10">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 glass-strong p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-dawn to-violet-signal flex items-center justify-center text-cosmos-void font-display text-2xl shrink-0">
-                    M
+        {/* User header */}
+        <div className="flex items-center justify-between mb-8 glass rounded-2xl p-4 px-6">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-dawn to-violet-signal flex items-center justify-center text-cosmos-void font-bold text-sm">
+              {(profile?.name || 'U')[0].toUpperCase()}
+            </div>
+            <div>
+              <h3 className="text-star-bright font-medium">{profile?.name || 'User'}</h3>
+              <p className="text-xs text-star-dim">
+                Day {checkIns.length} · {baselineStatus.message}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-star-faint">
+              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {isDemo && (
+              <button
+                onClick={handleClearData}
+                className="text-xs text-star-faint hover:text-warn-pink flex items-center gap-1 transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" /> Clear demo
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ─── Top row: 3 KPI panels ───────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+          {/* Risk Score */}
+          <div className="glass rounded-2xl p-6 text-center">
+            <p className="text-xs tracking-widest text-star-dim uppercase mb-2">Current Risk</p>
+            <RiskMeter value={currentRisk?.risk_index || 0} size={140} />
+            {currentRisk && (
+              <p className="text-xs text-star-faint mt-2">
+                {currentRisk.convergence_count} signal{currentRisk.convergence_count !== 1 ? 's' : ''} deviating ·
+                cluster factor {currentRisk.temporal_cluster_factor}×
+              </p>
+            )}
+          </div>
+
+          {/* Wellness Sparkline */}
+          <div className="glass rounded-2xl p-6">
+            <p className="text-xs tracking-widest text-star-dim uppercase mb-2">
+              Wellness · {checkIns.length} days
+            </p>
+            <WellnessSparkline
+              data={sparklineData}
+              interventionIndex={interventionIndex}
+              width={400}
+              height={140}
+              showLabels={true}
+            />
+          </div>
+
+          {/* Stats */}
+          <div className="glass rounded-2xl p-6">
+            <p className="text-xs tracking-widest text-star-dim uppercase mb-4">This period</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-star-dim text-sm">Check-ins</span>
+                <span className="text-star-bright text-xl font-display">
+                  <AnimatedNumber value={checkIns.length} />
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-star-dim text-sm">Avg sleep</span>
+                <span className="text-star-bright text-xl font-display">
+                  {(history.reduce((s, h) => s + h.sleep_hours, 0) / Math.max(history.length, 1)).toFixed(1)}h
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-star-dim text-sm">Avg risk</span>
+                <span className="text-star-bright text-xl font-display">
+                  {riskHistoryData.length > 0
+                    ? (riskHistoryData.reduce((s, d) => s + d.risk, 0) / riskHistoryData.length).toFixed(0)
+                    : '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-star-dim text-sm">Baseline</span>
+                <span className="text-sm" style={{ color: baselineStatus.established ? '#7fd9b8' : '#ff9b6a' }}>
+                  {baselineStatus.established ? '✓ Established' : `${baselineStatus.progress}%`}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Middle row: Constellation + Intervention ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="glass rounded-2xl p-6">
+            <p className="text-xs tracking-widest text-star-dim uppercase mb-2">Your constellation · live</p>
+            <ConstellationMap width={450} height={350} variant="labeled"
+              stars={currentRisk?.signals.map((s, i) => ({
+                id: i,
+                x: [50, 20, 80, 25, 75, 50][i] || 50,
+                y: [50, 25, 30, 75, 75, 12][i] || 50,
+                size: Math.max(2, Math.min(6, Math.abs(s.z_score) * 2 + 2)),
+                label: s.signal.replace(/_/g, ' ').split(' ').map(w => w[0].toUpperCase() + w.slice(1)).join(' '),
+                dimmed: s.status === 'normal',
+              })) || undefined}
+            />
+            <p className="text-xs text-star-faint mt-2">
+              Star brightness = deviation magnitude. Hover to interact.
+            </p>
+          </div>
+
+          <div className="glass rounded-2xl p-6">
+            <p className="text-xs tracking-widest text-star-dim uppercase mb-2">Active intervention</p>
+            <InterventionTrigger />
+          </div>
+        </div>
+
+        {/* ─── Signal grid ─────────────────────────────── */}
+        <div className="mb-8">
+          <h3 className="text-sm tracking-widest text-star-dim uppercase mb-4 flex items-center gap-2">
+            Behavioral signals
+            <span className="text-xs text-star-faint font-normal normal-case tracking-normal">
+              — computed from your check-in data
+            </span>
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {signalCards.map((s, i) => (
+              <SignalCard key={i} {...s} />
+            ))}
+          </div>
+        </div>
+
+        {/* ─── Risk History Log ─────────────────────────── */}
+        {riskLog.length > 0 && (
+          <div className="glass rounded-2xl p-6 mb-8">
+            <h3 className="text-sm tracking-widest text-star-dim uppercase mb-4">Risk computation log</h3>
+            <div className="space-y-3">
+              {riskLog.map((entry, i) => (
+                <div key={i} className="flex items-center gap-4 py-2 border-b border-star-faint/10 last:border-0">
+                  <span className="text-xs text-star-faint w-20">{entry.date}</span>
+                  <div className="flex-1">
+                    <span className="text-sm text-star-bright">
+                      Risk: {entry.risk_index.toFixed(0)}
+                    </span>
+                    <span
+                      className="ml-2 text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        background: `${tierColors[entry.tier as keyof typeof tierColors] || '#7fd9b8'}20`,
+                        color: tierColors[entry.tier as keyof typeof tierColors] || '#7fd9b8',
+                      }}
+                    >
+                      {entry.tier}
+                    </span>
                   </div>
-                  <div>
-                    <p className="font-display text-2xl font-extralight text-star-bright">
-                      Maya Rivera
-                    </p>
-                    <p className="text-lg font-extralight text-star-dim">
-                      Day 47 · Baseline established · Active monitoring
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-amber-dawn animate-pulse-soft shrink-0" />
-                  <span className="text-lg font-extralight text-amber-dawn">
-                    Pattern shift detected ·{' '}
-                    {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <span className="text-xs text-star-faint">
+                    {entry.convergence_count} signals
                   </span>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
+        )}
 
-          {/* ── Top KPI row ─────────────────────────────────────────────── */}
-          {/*
-            FIX: Original layout placed col-start-2 only on the first panel
-            and left the remaining two without explicit column positions,
-            causing the 12-column grid to overflow (1 + 3 + 5 + 3 = 12 cols
-            consumed, but col-start-2 on the first shifts everything by 1 so
-            the last panel spills past column 12).
-
-            Solution: remove col-start on individual panels and instead wrap
-            the three panels in a shared 10-column container (col-start-2,
-            col-span-10) that internally uses a 10-column sub-grid. This
-            keeps all panels perfectly aligned with the user bar above and
-            signal grid below.
-          */}
-          <div className="grid grid-cols-12 gap-5 mb-5">
-            <div className="col-span-12 md:col-start-2 md:col-span-10">
-              <div className="grid grid-cols-1 md:grid-cols-10 gap-5 h-full">
-
-                {/* Risk meter */}
-                <div className="md:col-span-3">
-                  <div className="glass p-7 clip-notch-tr h-full flex flex-col items-center justify-center">
-                    <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-violet-signal mb-4">
-                      Current Risk
-                    </span>
-                    <RiskMeter value={42} size={180} label="" showValue />
-                    <p className="text-lg font-extralight text-star-dim text-center mt-4">
-                      Up from 28 last week
-                    </p>
-                  </div>
-                </div>
-
-                {/* Wellness sparkline */}
-                <div className="md:col-span-4">
-                  <div className="glass p-7 clip-notch-tr h-full">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-amber-dawn">
-                        Wellness · 17 days
-                      </span>
-                      <TrendingDown
-                        className="text-amber-dawn shrink-0"
-                        size={18}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                    {/* Pass width as a hint only — the SVG internally uses width="100%" */}
-                    <WellnessSparkline width={500} height={180} />
-                    <p className="text-lg font-extralight text-star-dim mt-4">
-                      Intervention on day 9 turned the trajectory. Recovery at +23%.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Weekly stats */}
-                <div className="md:col-span-3">
-                  <div className="glass p-7 clip-notch-tr h-full flex flex-col">
-                    <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-aurora-green mb-4">
-                      This week
-                    </span>
-                    <div className="flex-1 space-y-5">
-                      <div>
-                        <div className="font-display text-5xl font-extralight gradient-text-amber leading-none">
-                          <AnimatedNumber end={5} />
-                        </div>
-                        <p className="text-lg font-extralight text-star-dim mt-1">
-                          Interventions delivered
-                        </p>
-                      </div>
-                      <div>
-                        <div className="font-display text-5xl font-extralight gradient-text-amber leading-none">
-                          <AnimatedNumber end={4} />
-                        </div>
-                        <p className="text-lg font-extralight text-star-dim mt-1">
-                          Engaged with (80%)
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          {/* ── Middle row: Constellation + Active intervention ──────────── */}
-          {/*
-            FIX: Original used md:col-span-6 and md:col-span-5 without a
-            shared col-start-2 wrapper, misaligning these panels with the
-            rest of the page. Now both panels live inside the same 10-column
-            wrapper used by every other row.
-          */}
-          <div className="grid grid-cols-12 gap-5 mb-5">
-            <div className="col-span-12 md:col-start-2 md:col-span-10">
-              <div className="grid grid-cols-1 md:grid-cols-10 gap-5 h-full">
-
-                {/* Constellation map */}
-                <div className="md:col-span-6">
-                  <div className="glass p-7 clip-notch-tr h-full">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-violet-signal">
-                        Your constellation · live
-                      </span>
-                      <Sparkles
-                        className="text-violet-signal shrink-0"
-                        size={18}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                    <div className="flex justify-center">
-                      <ConstellationMap variant="bright" width={400} height={400} />
-                    </div>
-                    <p className="text-lg font-extralight text-star-dim text-center mt-4">
-                      Hover the stars — your signals respond.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Active intervention */}
-                <div className="md:col-span-4">
-                  <div className="glass p-7 clip-notch-tr h-full">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-amber-dawn">
-                        Active intervention
-                      </span>
-                      <Bell
-                        className="text-amber-dawn shrink-0"
-                        size={18}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                    <InterventionTrigger autoTrigger />
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          {/* ── Behavioral signal grid ───────────────────────────────────── */}
-          <div className="grid grid-cols-12 gap-5 mb-5">
-            <div className="col-span-12 md:col-start-2 md:col-span-10">
-              <h3 className="font-display text-3xl font-extralight text-star-bright mb-5">
-                Behavioral signals
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                {signals.map((s, i) => (
-                  <motion.div
-                    key={s.title}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: i * 0.1 }}
-                  >
-                    <SignalCard {...s} />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Intervention log ─────────────────────────────────────────── */}
-          {/*
-            FIX: Using stable `id` keys from each log entry instead of the
-            array index `i`, preventing React reconciliation issues when the
-            list is reordered or updated.
-          */}
-          <div className="grid grid-cols-12 gap-5">
-            <div className="col-span-12 md:col-start-2 md:col-span-10">
-              <div className="glass p-7 clip-notch-tr">
-                <h3 className="font-display text-3xl font-extralight text-star-bright mb-6">
-                  Recent intervention log
-                </h3>
-                <div className="space-y-4">
-                  {interventionLog.map((item, i) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.5, delay: i * 0.08 }}
-                      className="flex items-center gap-4 pb-4 border-b border-star-bright/5 last:border-0"
-                    >
-                      <span className="text-lg font-extralight text-star-faint min-w-[100px]">
-                        {item.time}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xl font-extralight text-star-bright truncate">
-                          {item.type}
-                        </p>
-                        <p className="text-lg font-extralight text-star-dim truncate">
-                          {item.outcome}
-                        </p>
-                      </div>
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{
-                          backgroundColor: item.color,
-                          boxShadow: `0 0 8px ${item.color}`,
-                        }}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
+        {/* ─── Actions ──────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link
+            to="/check-in"
+            className="flex-1 flex items-center justify-center gap-2 bg-amber-dawn text-cosmos-void font-medium py-3 rounded-xl hover:bg-amber-warm transition-colors"
+          >
+            New check-in
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+          <Link
+            to="/science"
+            className="flex-1 flex items-center justify-center gap-2 glass text-star-bright py-3 rounded-xl hover:bg-cosmos-surface transition-colors"
+          >
+            How the engine works
+          </Link>
         </div>
       </section>
-    </motion.main>
+    </>
   );
 }
+
