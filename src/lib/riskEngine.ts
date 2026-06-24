@@ -1,5 +1,5 @@
 /**
- * SilentCrisis AI — Core Risk Computation Engine
+ * SilentCrisis — Core Risk Computation Engine
  *
  * This is the REAL implementation of the Composite Risk Index
  * described in the submission PDF:
