@@ -88,7 +88,7 @@ export default function Hero() {
         {/* Vertical text accent */}
         <div className="absolute right-6 md:right-10 bottom-16 -rotate-90 origin-bottom-right z-10 pointer-events-none hidden md:block">
           <span className="text-lg font-extralight uppercase tracking-wide-cosmic text-amber-dawn/30">
-            EST. 2025 / EARLY WARNING SYSTEM
+            EARLY WARNING SYSTEM
           </span>
         </div>
 
