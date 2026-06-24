@@ -20,7 +20,7 @@ const story = [
   {
     year: 'The Build',
     title: 'A hackathon MVP to prove the concept',
-    body: 'SilentCrisis AI was built as a hackathon project to demonstrate a working behavioral early-warning system. It includes a real risk computation engine (Z-score deviation, convergence scoring, temporal clustering), NLP sentiment analysis, a self-check-in system, and an intervention library backed by CBT and ACT research.',
+    body: 'SilentCrisis was built as a hackathon project to demonstrate a working behavioral early-warning system. It includes a real risk computation engine (Z-score deviation, convergence scoring, temporal clustering), NLP sentiment analysis, a self-check-in system, and an intervention library backed by CBT and ACT research.',
   },
   {
     year: 'The Vision',
