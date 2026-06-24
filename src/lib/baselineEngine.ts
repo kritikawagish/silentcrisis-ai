@@ -1,5 +1,5 @@
 /**
- * SilentCrisis AI — Personal Baseline Engine
+ * SilentCrisis — Personal Baseline Engine
  *
  * Computes a personal baseline from historical check-in data.
  * After 14 days, the baseline is considered "established."
